@@ -4,7 +4,7 @@ set -e
 set -u
 
 prog=$(basename $0)
-PGDATABASE=${prog#*-}
+PGDATABASE=${prog#*:}
 : ${PGPASSFILE=$HOME/.pgpass}
 : ${PGHOST=$(hostname -s)}
 : ${DBI_DRIVER=Pg}
@@ -15,11 +15,21 @@ then
   name=${prog#__}
   dir=$(dirname $0)
 
-  rm -f -v "$dir"/"$name"-*
+  rm -f -v "$dir"/"$name":*
 
-  for PGDATABASE in $(cut -d: -f3 "$PGPASSFILE")
+  for database_and_user in $(cut -d: -f3-4 "$PGPASSFILE")
   do
-    ln -v -s "$prog" "$dir/$name-$PGDATABASE"
+    PGDATABASE=${database_and_user%%:*}
+    PGUSER=${database_and_user#${PGDATABASE}:}
+    if [ "$PGDATABASE" = "$PGUSER" ] ; then
+      shorthand=${PGDATABASE}
+    elif ! [ "${PGUSER#${PGDATABASE}}" = "$PGUSER" ] ; then
+      shorthand=${PGUSER}
+    else
+      shorthand=${database_and_user}
+    fi
+    linkname=${name}:${shorthand}
+    ln -v -s "$prog" "$dir/${linkname}"
   done
 
 else
