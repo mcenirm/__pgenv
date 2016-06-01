@@ -3,19 +3,21 @@
 set -e
 set -u
 
+prefix=__
+delim=.
 prog=$(basename $0)
-PGDATABASE=${prog#*:}
+PGDATABASE=${prog#*${delim}}
 : ${PGPASSFILE=$HOME/.pgpass}
 : ${PGHOST=$(hostname -s)}
 : ${DBI_DRIVER=Pg}
 
-if [ "$prog" = "$PGDATABASE" ]
+if [ "${prog:0:2}" = "$prefix" ]
 then
 
-  name=${prog#__}
+  name=${prog#${prefix}}
   dir=$(dirname $0)
 
-  rm -f -v "$dir"/"$name":*
+  rm -f -v "$dir"/"$name$delim"*
 
   for database_and_user in $(cut -d: -f3-4 "$PGPASSFILE")
   do
@@ -26,9 +28,9 @@ then
     elif ! [ "${PGUSER#${PGDATABASE}}" = "$PGUSER" ] ; then
       shorthand=${PGUSER}
     else
-      shorthand=${database_and_user}
+      shorthand=${PGDATABASE}${delim}${PGUSER}
     fi
-    linkname=${name}:${shorthand}
+    linkname=${name}${delim}${shorthand}
     ln -v -s "$prog" "$dir/${linkname}"
   done
 
