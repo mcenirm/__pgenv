@@ -1,0 +1,46 @@
+#!/bin/bash
+
+set -e
+set -u
+
+prog=$(basename $0)
+PGDATABASE=${prog#*-}
+: ${PGPASSFILE=$HOME/.pgpass}
+: ${PGHOST=$(hostname -s)}
+: ${DBI_DRIVER=Pg}
+
+if [ "$prog" = "$PGDATABASE" ]
+then
+
+  name=${prog#__}
+  dir=$(dirname $0)
+
+  rm -f -v "$dir"/"$name"-*
+
+  for PGDATABASE in $(cut -d: -f3 "$PGPASSFILE")
+  do
+    ln -v -s "$prog" "$dir/$name-$PGDATABASE"
+  done
+
+else
+
+  if ! match=$(egrep < "$PGPASSFILE" -m 1 -e "^$PGHOST:[^:]*:$PGDATABASE:")
+  then
+    if ! match=$(egrep < "$PGPASSFILE" -m 1 -e "^localhost:[^:]*:$PGDATABASE:")
+    then
+      echo "no matching pgpass entry for $PGHOST:...:$PGDATABASE:..."
+      exit 1
+    fi
+  fi
+  PGHOST=${match%%:*}
+  match=${match#*:}
+  PGPORT=${match%%:*}
+  match=${match#*:}
+  PGDATABASE=${match%%:*}
+  match=${match#*:}
+  PGUSER=${match%%:*}
+
+  export PGHOST PGPORT PGDATABASE PGUSER PGPASSFILE DBI_DRIVER
+
+  exec -- "${@-psql}"
+fi
