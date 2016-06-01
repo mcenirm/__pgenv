@@ -5,54 +5,42 @@ set -u
 
 prefix=__
 delim=.
-prog=$(basename $0)
-PGDATABASE=${prog#*${delim}}
-: ${PGPASSFILE=$HOME/.pgpass}
-: ${PGHOST=$(hostname -s)}
-: ${DBI_DRIVER=Pg}
+pgpass=${PGPASSFILE:-${HOME}/.pgpass}
 
-if [ "${prog:0:2}" = "$prefix" ]
-then
+prog=$(basename "$0")
+dir=$(dirname "$0")
+name=${prog#${prefix}}
 
-  name=${prog#${prefix}}
-  dir=$(dirname $0)
+rm -f -v "$dir"/"$name$delim"*
 
-  rm -f -v "$dir"/"$name$delim"*
-
-  for database_and_user in $(cut -d: -f3-4 "$PGPASSFILE")
-  do
-    PGDATABASE=${database_and_user%%:*}
-    PGUSER=${database_and_user#${PGDATABASE}:}
-    if [ "$PGDATABASE" = "$PGUSER" ] ; then
-      shorthand=${PGDATABASE}
-    elif ! [ "${PGUSER#${PGDATABASE}}" = "$PGUSER" ] ; then
-      shorthand=${PGUSER}
-    else
-      shorthand=${PGDATABASE}${delim}${PGUSER}
-    fi
-    linkname=${name}${delim}${shorthand}
-    ln -v -s "$prog" "$dir/${linkname}"
-  done
-
-else
-
-  if ! match=$(egrep < "$PGPASSFILE" -m 1 -e "^$PGHOST:[^:]*:$PGDATABASE:")
-  then
-    if ! match=$(egrep < "$PGPASSFILE" -m 1 -e "^localhost:[^:]*:$PGDATABASE:")
-    then
-      echo "no matching pgpass entry for $PGHOST:...:$PGDATABASE:..."
-      exit 1
-    fi
+cat -- "$pgpass" | while IFS=: read -r dbhost dbport dbname dbuser dbpass ; do
+  if [ "$dbname" = "$dbuser" ] ; then
+    shorthand=${dbname}
+  elif ! [ "${dbuser#${dbname}}" = "$dbuser" ] ; then
+    shorthand=${dbuser}
+  else
+    shorthand=${dbname}${delim}${dbuser}
   fi
-  PGHOST=${match%%:*}
-  match=${match#*:}
-  PGPORT=${match%%:*}
-  match=${match#*:}
-  PGDATABASE=${match%%:*}
-  match=${match#*:}
-  PGUSER=${match%%:*}
+  script=${dir}/${name}${delim}${shorthand}
 
-  export PGHOST PGPORT PGDATABASE PGUSER PGPASSFILE DBI_DRIVER
+  if [ -f "$script" ] ; then
+    echo >&2 "ERROR: conflicting entry: $script"
+  else
 
-  exec -- "${@-psql}"
-fi
+    cat >"$script" <<EOF
+#!/bin/bash
+
+export PGHOST=\${PGHOST:-$dbhost}
+export PGPORT=\${PGPORT:-$dbport}
+export PGDATABASE=\${PGDATABASE:-$dbname}
+export PGUSER=\${PGUSER:-$dbuser}
+export PGPASSFILE=\${PGPASSFILE:-$pgpass}
+export DBI_DRIVER=\${DBI_DRIVER:-Pg}
+
+exec -- "\${@-psql}"
+EOF
+
+    chmod +x "$script"
+    echo "  $script"
+  fi
+done
